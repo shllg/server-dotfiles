@@ -146,9 +146,12 @@ if [[ ! -f "$GITCONFIG_LOCAL" ]]; then
     echo ""
     git_name=""
     git_email=""
-    if [[ -t 0 ]] || { [[ -e /dev/tty ]] && echo -n '' >/dev/tty 2>/dev/null; }; then
-      read -rp "   Git name  (e.g. John Doe): " git_name </dev/tty 2>/dev/null || true
-      read -rp "   Git email (e.g. john@example.com): " git_email </dev/tty 2>/dev/null || true
+    if [[ -t 0 ]]; then
+      read -rp "   Git name  (e.g. John Doe): " git_name || true
+      read -rp "   Git email (e.g. john@example.com): " git_email || true
+    elif [[ -e /dev/tty ]]; then
+      read -t 30 -rp "   Git name  (e.g. John Doe): " git_name </dev/tty 2>/dev/null || true
+      read -t 30 -rp "   Git email (e.g. john@example.com): " git_email </dev/tty 2>/dev/null || true
     fi
     if [[ -n "$git_name" && -n "$git_email" ]]; then
       cat > "$GITCONFIG_LOCAL" << GITEOF
