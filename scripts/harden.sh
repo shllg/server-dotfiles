@@ -50,9 +50,13 @@ ask_yn() {
     echo "  [dry-run] would ask: $prompt [y/N]"
     return 1
   fi
-  if [[ -t 0 ]] || [[ -e /dev/tty ]]; then
+  if [[ -t 0 ]]; then
     local answer=""
-    read -rp "   $prompt [y/N] " answer </dev/tty 2>/dev/null || return 1
+    read -rp "   $prompt [y/N] " answer || return 1
+    [[ "$answer" =~ ^[Yy] ]]
+  elif [[ -e /dev/tty ]]; then
+    local answer=""
+    read -t 30 -rp "   $prompt [y/N] " answer </dev/tty 2>/dev/null || return 1
     [[ "$answer" =~ ^[Yy] ]]
   else
     warn "No TTY available — skipping interactive prompt: $prompt"
@@ -584,10 +588,10 @@ if dpkg -l fail2ban 2>/dev/null | grep -q '^ii'; then
   ok "Fail2ban already installed"
 else
   echo ""
-  echo "   Fail2ban protects public-facing services (web apps, exposed ports)"
-  echo "   against brute-force and abuse. Not needed if everything is behind Tailscale."
+  echo "   Fail2ban protects public-facing services against brute-force attacks."
+  echo "   If all ports are behind Tailscale (no public-facing services), skip this."
   echo ""
-  if ask_yn "Install fail2ban?"; then
+  if ask_yn "Install fail2ban? (y = install, N = skip)"; then
     run apt-get update -qq
     run apt-get install -y fail2ban
 
