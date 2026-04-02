@@ -1,0 +1,4 @@
+*.local
+
+# Track .claude/ project config (commands, skills, settings) but not conversation logs
+.claude/**/*.jsonl

@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if this Bash command could disrupt server access or stability. BLOCK if it does ANY of these WITHOUT the user explicitly requesting it in the current conversation:\n\n1. Restarts or stops: sshd, tailscaled, networking, systemd-resolved, nftables\n2. Modifies firewall: iptables, nftables, ufw commands that add/delete/flush rules\n3. Kills network processes: kill/pkill targeting sshd, tailscaled, systemd-networkd\n4. Destructive cleanup: rm -rf on system dirs, find with -delete on /etc or /var\n5. Modifies critical auth: passwd, usermod -L, changes to PAM config\n\nALLOW if: the user explicitly asked for this action, OR the command is read-only (status, list, show, cat, grep, ls, journalctl, systemctl status, ss, ip addr, tailscale status, etc.)\n\nRespond with ONLY 'ALLOW' or 'BLOCK: <reason>'.",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if this file edit targets a critical system config. If the file path matches any of these patterns:\n\n- /etc/ssh/*\n- /etc/nftables* or /etc/iptables*\n- /etc/fstab\n- /etc/pam.d/*\n- /etc/resolv.conf or /etc/systemd/resolved.conf\n- /etc/systemd/system/*.service (but NOT drop-ins via systemctl edit)\n- Any file containing tailscale config\n\nThen BLOCK with a message reminding to: (1) backup the file first with cp <file> <file>.bak-$(date +%s), (2) confirm the change with the user.\n\nIf the file is NOT in the critical list above, ALLOW.\n\nRespond with ONLY 'ALLOW' or 'BLOCK: <reason>'.",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

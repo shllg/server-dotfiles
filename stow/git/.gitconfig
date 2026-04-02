@@ -1,0 +1,26 @@
+[core]
+	autocrlf = input
+	editor = vim
+
+[init]
+	defaultBranch = main
+
+[pull]
+	rebase = true
+
+[push]
+	autoSetupRemote = true
+
+[alias]
+	st = status
+	co = checkout
+	br = branch
+	lg = log --oneline --graph --decorate
+
+# Server-specific overrides (not managed by stow)
+[include]
+	path = ~/.gitconfig.local
+[user]
+	signingkey = DF58ADA2BB311A53
+[commit]
+	gpgsign = true
