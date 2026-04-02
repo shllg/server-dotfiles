@@ -118,6 +118,18 @@ fi
 # 4. Stow dotfiles (--no-folding prevents stow from symlinking parent dirs)
 info "Stowing dotfiles..."
 if [[ -f "$DOTFILES_DIR/Makefile" ]]; then
+  # Back up any pre-existing files that would conflict with stow
+  for pkg_dir in "$DOTFILES_DIR"/stow/*/; do
+    pkg=$(basename "$pkg_dir")
+    while IFS= read -r -d '' rel_file; do
+      target="$HOME/$rel_file"
+      if [[ -f "$target" && ! -L "$target" ]]; then
+        backup="$target.pre-stow.$(date +%s)"
+        warn "Backing up existing $target → $backup"
+        mv "$target" "$backup"
+      fi
+    done < <(cd "$pkg_dir" && find . -type f -printf '%P\0')
+  done
   run make -C "$DOTFILES_DIR" stow-all
   ok "Dotfiles stowed"
 else
@@ -134,7 +146,7 @@ if [[ ! -f "$GITCONFIG_LOCAL" ]]; then
     echo ""
     git_name=""
     git_email=""
-    if [[ -t 0 ]] || [[ -e /dev/tty ]]; then
+    if [[ -t 0 ]] || { [[ -e /dev/tty ]] && echo -n '' >/dev/tty 2>/dev/null; }; then
       read -rp "   Git name  (e.g. John Doe): " git_name </dev/tty 2>/dev/null || true
       read -rp "   Git email (e.g. john@example.com): " git_email </dev/tty 2>/dev/null || true
     fi

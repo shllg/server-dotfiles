@@ -55,5 +55,16 @@ mkcd() {
     mkdir -p "$1" && cd "$1"
 }
 
-# -- Server-specific overrides (not managed by stow) --------------------------
+# -- Server-specific overrides (not managed by stow) ---------------------------
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
+
+# -- mise ----------------------------------------------------------------------
+eval "$(/root/.local/bin/mise activate zsh)"
+
+# pnpm
+export PNPM_HOME="/root/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
