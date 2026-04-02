@@ -15,6 +15,10 @@
 #   sudo ufw disable
 #   sudo rm /etc/ssh/sshd_config.d/99-hardened.conf
 #   sudo rm /etc/ssh/sshd_config.d/98-listen-address.conf
+#   sudo systemctl disable wait-for-tailscale.service
+#   sudo rm /etc/systemd/system/wait-for-tailscale.service
+#   sudo rm -rf /etc/systemd/system/ssh.service.d
+#   sudo systemctl daemon-reload
 #   sudo systemctl restart sshd
 set -euo pipefail
 
@@ -152,7 +156,7 @@ PermitUserEnvironment no
 DisableForwarding yes
 
 # -- Strong crypto only --------------------------------------------------------
-KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org
 Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
 MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 HostKeyAlgorithms ssh-ed25519
@@ -180,6 +184,75 @@ LISTENEOF
   else
     echo "  [dry-run] write $SSHD_HARDENED"
     echo "  [dry-run] write /etc/ssh/sshd_config.d/98-listen-address.conf (ListenAddress $TS_IP)"
+  fi
+fi
+
+# -- Boot-order resilience: sshd waits for Tailscale IP -----------------------
+info "SSH ↔ Tailscale boot ordering"
+
+WAIT_FOR_TS="/etc/systemd/system/wait-for-tailscale.service"
+SSHD_DROPIN_DIR="/etc/systemd/system/ssh.service.d"
+SSHD_DROPIN="$SSHD_DROPIN_DIR/wait-for-tailscale.conf"
+
+if [[ -f "$WAIT_FOR_TS" ]] && [[ -f "$SSHD_DROPIN" ]]; then
+  ok "Boot-order units already in place"
+else
+  if ! $DRY_RUN; then
+    # Oneshot service that blocks until Tailscale has an IPv4 address
+    cat > "$WAIT_FOR_TS" << 'WAITEOF'
+# wait-for-tailscale.service — managed by dotfiles/scripts/harden.sh
+# Blocks until tailscale ip -4 returns an address (up to 90s).
+# sshd depends on this so it doesn't try to bind the Tailscale IP
+# before the interface is ready after a reboot.
+[Unit]
+Description=Wait for Tailscale IP to be available
+After=tailscaled.service
+Requires=tailscaled.service
+
+[Service]
+Type=oneshot
+# Poll every 2s for up to 90s (45 attempts)
+ExecStart=/bin/bash -c '\
+  for i in $(seq 1 45); do \
+    if /usr/bin/tailscale ip -4 >/dev/null 2>&1; then \
+      echo "Tailscale IP ready: $(/usr/bin/tailscale ip -4)"; \
+      exit 0; \
+    fi; \
+    echo "Waiting for Tailscale IP... (attempt $i/45)"; \
+    sleep 2; \
+  done; \
+  echo "ERROR: Tailscale IP not available after 90s"; \
+  exit 1'
+TimeoutStartSec=120
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+WAITEOF
+    ok "Installed $WAIT_FOR_TS"
+
+    # Drop-in for ssh.service: wait for Tailscale + add RestartSec safety net
+    mkdir -p "$SSHD_DROPIN_DIR"
+    cat > "$SSHD_DROPIN" << 'DROPEOF'
+# wait-for-tailscale.conf — managed by dotfiles/scripts/harden.sh
+# Makes sshd wait for the Tailscale IP before starting, and adds
+# a restart delay as a safety net.
+[Unit]
+After=wait-for-tailscale.service
+Requires=wait-for-tailscale.service
+
+[Service]
+RestartSec=5
+DROPEOF
+    ok "Installed $SSHD_DROPIN"
+
+    systemctl daemon-reload
+    systemctl enable wait-for-tailscale.service
+    ok "Boot ordering configured: sshd waits for Tailscale IP"
+  else
+    echo "  [dry-run] install $WAIT_FOR_TS (polls for tailscale IP, 90s timeout)"
+    echo "  [dry-run] install $SSHD_DROPIN (After=wait-for-tailscale.service + RestartSec=5)"
+    echo "  [dry-run] systemctl enable wait-for-tailscale.service"
   fi
 fi
 
@@ -569,7 +642,7 @@ info "Hardening complete."
 echo ""
 echo "  What was done:"
 echo "    [1] Tailscale — installed and verified"
-echo "    [2] SSH — key-only, Tailscale IP only, strong ciphers"
+echo "    [2] SSH — key-only, Tailscale IP only, strong ciphers, boot-order safe"
 echo "    [3] UFW — deny all incoming, allow tailscale0 + 41641/udp"
 echo "    [4] Kernel — sysctl hardening (anti-spoofing, SYN cookies, etc.)"
 echo "    [5] AppArmor — enforcing all profiles"
