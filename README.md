@@ -16,6 +16,8 @@ cd ~/dotfiles
 bash scripts/debian-bootstrap.sh
 
 # 3. Install and authenticate Tailscale
+curl -fsSL https://tailscale.com/install.sh -o /tmp/tailscale-install.sh
+sh /tmp/tailscale-install.sh
 tailscale up
 
 # 4. Harden (Tailscale must be connected first)
