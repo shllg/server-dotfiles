@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+#
+# tmux-colorize — Apply deterministic per-session color theming
+#
+# Usage: tmux-colorize [session-name] [accent-override]
+#   session-name:    defaults to current tmux session
+#   accent-override: hex color to use instead of deterministic hash (e.g. "#bb9af7")
+#
+# Applies a consistent Tokyo Night accent color to:
+#   - status-left (session indicator)
+#   - active window tab
+#   - active pane border
+#   - pane border format
+#
+# Color is deterministic: same session name always gets the same color.
+
+set -euo pipefail
+
+SESSION="${1:-$(tmux display-message -p '#S' 2>/dev/null || true)}"
+[[ -z "$SESSION" ]] && exit 0
+
+# Verify session exists
+tmux has-session -t "$SESSION" 2>/dev/null || exit 0
+
+# --- Tokyo Night palette ---
+
+COLORS=("#f7768e" "#ff9e64" "#e0af68" "#9ece6a" "#73daca" "#7dcfff" "#7aa2f7" "#bb9af7")
+#        red       orange    yellow    green     teal      cyan      blue      magenta
+
+BG="#292e42"
+FG_DIM="#3b4261"
+INACTIVE_BG="#737aa2"
+INACTIVE_BG2="#545c7e"
+PREFIX_COLOR="#e0af68"
+
+# --- Determine accent color ---
+
+if [[ -n "${2:-}" ]]; then
+  [[ "$2" =~ ^#[0-9a-fA-F]{6}$ ]] || { echo "Invalid color: $2" >&2; exit 1; }
+  ACCENT="$2"
+else
+  HASH=$(printf '%s' "$SESSION" | cksum | cut -d' ' -f1)
+  ACCENT="${COLORS[$((HASH % ${#COLORS[@]}))]}"
+fi
+
+# --- Detect project type for icon ---
+
+ROOT=$(tmux display-message -t "=$SESSION:1.1" -p '#{pane_current_path}' 2>/dev/null || echo "")
+
+ICON=""
+if [[ -n "$ROOT" ]]; then
+  if [[ -f "$ROOT/Gemfile" ]]; then
+    ICON=" "
+  elif [[ -f "$ROOT/package.json" ]]; then
+    ICON=" "
+  elif [[ -f "$ROOT/Cargo.toml" ]]; then
+    ICON=" "
+  elif [[ -f "$ROOT/go.mod" ]]; then
+    ICON="󰟓 "
+  elif [[ -f "$ROOT/pyproject.toml" || -f "$ROOT/requirements.txt" ]]; then
+    ICON=" "
+  elif [[ -f "$ROOT/flake.nix" || -f "$ROOT/shell.nix" ]]; then
+    ICON=" "
+  fi
+fi
+
+# --- Apply per-session styles ---
+
+# Status left: icon + session name with powerline arrow
+tmux set-option -t "$SESSION" status-left \
+  "#[fg=${FG_DIM},bold]#{?client_prefix,#[bg=${PREFIX_COLOR}],#[bg=${ACCENT}]} ${ICON}#S #[bg=${BG}]#{?client_prefix,#[fg=${PREFIX_COLOR}],#[fg=${ACCENT}]}#[none]"
+
+# Active window tab
+tmux set-option -t "$SESSION" window-status-current-format \
+  "#[bg=${ACCENT},fg=${BG}]#[none]#[fg=#ffffff,bold] #I #W #{?pane_synchronized,✵,}#[bg=${BG},fg=${ACCENT}]#[none]"
+
+# Inactive window tabs
+tmux set-option -t "$SESSION" window-status-format \
+  "#[bg=${INACTIVE_BG},fg=${BG}]#[none]#[fg=#ffffff]#I#[bg=${INACTIVE_BG2},fg=${INACTIVE_BG}]#[none]#[fg=#ffffff] #W #[bg=${BG},fg=${INACTIVE_BG2}]#[none]"
+
+# Pane borders
+tmux set-option -t "$SESSION" pane-active-border-style "fg=${ACCENT}"
+tmux set-option -t "$SESSION" pane-border-style "fg=#3b4261"
+
+# Pane border label
+tmux set-option -t "$SESSION" pane-border-format \
+  " #{?pane_active,#[fg=${ACCENT}]● ,  }#P: #{pane_current_command} "
+
+# Store accent as user options for other scripts to reference
+tmux set-option -t "$SESSION" @session_accent "$ACCENT"
+tmux set-option -t "$SESSION" @session_icon "$ICON"

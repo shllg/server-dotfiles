@@ -26,17 +26,6 @@ define require_pkg
 	fi
 endef
 
-# Interactive picker: fzf if available, select fallback otherwise
-define pick_package
-	$(shell if command -v fzf >/dev/null 2>&1; then \
-		printf '%s\n' $(PACKAGES) | fzf --height=40% --reverse --header="$(1)" --prompt="Package: "; \
-	else \
-		printf '%s\n' $(PACKAGES) | cat -n >&2; \
-		read -rp "Enter number: " n </dev/tty >&2; \
-		printf '%s\n' $(PACKAGES) | sed -n "$${n}p"; \
-	fi)
-endef
-
 # -- Targets -------------------------------------------------------------------
 .PHONY: help
 help:
@@ -60,6 +49,21 @@ list:
 		echo "  - $$pkg$$note"; \
 	done
 
+# -- Interactive picker (pure shell, runs at recipe time) ----------------------
+define pick_and_run
+	@pkgs=($(PACKAGES)); \
+	if command -v fzf >/dev/null 2>&1; then \
+		pkg=$$(printf '%s\n' "$${pkgs[@]}" | fzf --height=40% --reverse --header="$(2)" --prompt="Package: "); \
+	else \
+		printf '%s\n' "$${pkgs[@]}" | cat -n; \
+		read -rp "Enter number: " n; \
+		pkg=$$(printf '%s\n' "$${pkgs[@]}" | sed -n "$${n}p"); \
+	fi; \
+	if [ -n "$$pkg" ]; then \
+		$(MAKE) --no-print-directory $(1) PACKAGE=$$pkg; \
+	fi
+endef
+
 # -- Stow ----------------------------------------------------------------------
 .PHONY: stow
 stow:
@@ -67,11 +71,10 @@ ifdef PACKAGE
 	$(call require_pkg,$(PACKAGE))
 	$(call run_notes,$(PACKAGE))
 	@echo -e "$(C)Stowing $(PACKAGE)...$(R)"
-	@cd stow && stow -t $(TARGET) -v $(PACKAGE)
+	@cd stow && stow --no-folding -t $(TARGET) -v $(PACKAGE)
 	@echo -e "$(G)Done: $(PACKAGE)$(R)"
 else
-	@pkg=$(call pick_package,Select package to stow); \
-	if [ -n "$$pkg" ]; then $(MAKE) --no-print-directory stow PACKAGE=$$pkg; fi
+	$(call pick_and_run,stow,Select package to stow)
 endif
 
 .PHONY: stow-all
@@ -86,11 +89,10 @@ unstow:
 ifdef PACKAGE
 	$(call require_pkg,$(PACKAGE))
 	@echo -e "$(C)Unstowing $(PACKAGE)...$(R)"
-	@cd stow && stow -D -t $(TARGET) -v $(PACKAGE)
+	@cd stow && stow --no-folding -D -t $(TARGET) -v $(PACKAGE)
 	@echo -e "$(G)Done: $(PACKAGE) removed$(R)"
 else
-	@pkg=$(call pick_package,Select package to unstow); \
-	if [ -n "$$pkg" ]; then $(MAKE) --no-print-directory unstow PACKAGE=$$pkg; fi
+	$(call pick_and_run,unstow,Select package to unstow)
 endif
 
 .PHONY: unstow-all
@@ -106,11 +108,10 @@ ifdef PACKAGE
 	$(call require_pkg,$(PACKAGE))
 	$(call run_notes,$(PACKAGE))
 	@echo -e "$(C)Restowing $(PACKAGE)...$(R)"
-	@cd stow && stow -R -t $(TARGET) -v $(PACKAGE)
+	@cd stow && stow --no-folding -R -t $(TARGET) -v $(PACKAGE)
 	@echo -e "$(G)Done: $(PACKAGE) restowed$(R)"
 else
-	@pkg=$(call pick_package,Select package to restow); \
-	if [ -n "$$pkg" ]; then $(MAKE) --no-print-directory restow PACKAGE=$$pkg; fi
+	$(call pick_and_run,restow,Select package to restow)
 endif
 
 .PHONY: restow-all
@@ -123,6 +124,20 @@ restow-all:
 stow-%:   ; @$(MAKE) --no-print-directory stow   PACKAGE=$*
 unstow-%: ; @$(MAKE) --no-print-directory unstow  PACKAGE=$*
 restow-%: ; @$(MAKE) --no-print-directory restow  PACKAGE=$*
+
+# -- Install scripts to /usr/local/bin -----------------------------------------
+.PHONY: install-scripts
+install-scripts:
+	@echo -e "$(C)Installing scripts to /usr/local/bin...$(R)"
+	@for script in notify-discord check-disk notify-login; do \
+		src="scripts/$${script}.sh"; \
+		if [ -f "$$src" ]; then \
+			cp "$$src" "/usr/local/bin/$$script"; \
+			chmod 0755 "/usr/local/bin/$$script"; \
+			echo -e "$(G)  $$script$(R)"; \
+		fi; \
+	done
+	@echo -e "$(G)Done$(R)"
 
 # -- Maintenance ---------------------------------------------------------------
 .PHONY: clean-links

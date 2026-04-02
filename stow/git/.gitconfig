@@ -20,7 +20,3 @@
 # Server-specific overrides (not managed by stow)
 [include]
 	path = ~/.gitconfig.local
-[user]
-	signingkey = DF58ADA2BB311A53
-[commit]
-	gpgsign = true

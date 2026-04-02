@@ -88,7 +88,23 @@ else
   ok "oh-my-zsh already present"
 fi
 
-# 3. Set zsh as default shell
+# 3. TPM (tmux plugin manager)
+info "Checking tmux plugin manager (TPM)..."
+TPM_DIR="$HOME/.config/tmux/plugins/tpm"
+if [[ ! -d "$TPM_DIR" ]]; then
+  warn "Installing TPM..."
+  if ! $DRY_RUN; then
+    mkdir -p "$(dirname "$TPM_DIR")"
+    git clone https://github.com/tmux-plugins/tpm "$TPM_DIR"
+  else
+    echo "  [dry-run] git clone tpm → $TPM_DIR"
+  fi
+  ok "TPM installed"
+  warn "After first tmux start, press prefix+I to install plugins"
+else
+  ok "TPM already present"
+fi
+
 info "Checking default shell..."
 current_shell=$(getent passwd "$(whoami)" | cut -d: -f7)
 if [[ "$current_shell" != */zsh ]]; then
@@ -99,7 +115,7 @@ else
   ok "Already using zsh"
 fi
 
-# 4. Stow dotfiles
+# 4. Stow dotfiles (--no-folding prevents stow from symlinking parent dirs)
 info "Stowing dotfiles..."
 if [[ -f "$DOTFILES_DIR/Makefile" ]]; then
   run make -C "$DOTFILES_DIR" stow-all
@@ -108,7 +124,45 @@ else
   warn "Makefile not found in $DOTFILES_DIR — skipping stow"
 fi
 
-# 5. Claude Code local config (server-specific context)
+# 5. Git identity (.gitconfig.local)
+GITCONFIG_LOCAL="$HOME/.gitconfig.local"
+info "Checking git identity..."
+if [[ ! -f "$GITCONFIG_LOCAL" ]]; then
+  if ! $DRY_RUN; then
+    echo ""
+    echo "   Git needs a name and email for commits on this server."
+    echo ""
+    git_name=""
+    git_email=""
+    if [[ -t 0 ]] || [[ -e /dev/tty ]]; then
+      read -rp "   Git name  (e.g. John Doe): " git_name </dev/tty 2>/dev/null || true
+      read -rp "   Git email (e.g. john@example.com): " git_email </dev/tty 2>/dev/null || true
+    fi
+    if [[ -n "$git_name" && -n "$git_email" ]]; then
+      cat > "$GITCONFIG_LOCAL" << GITEOF
+[user]
+	name = $git_name
+	email = $git_email
+GITEOF
+      ok "Created $GITCONFIG_LOCAL"
+    else
+      # Write a skeleton so the user knows to fill it in
+      cat > "$GITCONFIG_LOCAL" << 'GITEOF'
+# Fill in your git identity for this server
+[user]
+#	name = Your Name
+#	email = you@example.com
+GITEOF
+      warn "Created skeleton $GITCONFIG_LOCAL — fill in name/email"
+    fi
+  else
+    echo "  [dry-run] create $GITCONFIG_LOCAL"
+  fi
+else
+  ok "Git identity already configured"
+fi
+
+# 6. Claude Code local config
 # The project path slug matches how Claude Code resolves ~/.claude/projects/<path>/
 CLAUDE_PROJECT_DIR="$HOME/.claude/projects/-root-dotfiles"
 CLAUDE_LOCAL_MD="$CLAUDE_PROJECT_DIR/CLAUDE.md"
@@ -139,8 +193,17 @@ else
   ok "Local Claude config already exists"
 fi
 
-# 6. Summary
+# 7. Hardening
+info "Hardening..."
+warn "Run 'bash scripts/harden.sh' separately to:"
+echo "  - Install & configure Tailscale"
+echo "  - Lock SSH to Tailscale only"
+echo "  - Enable UFW firewall"
+echo "  - Apply kernel hardening"
+echo "  Use --dry-run to preview: bash scripts/harden.sh --dry-run"
 echo ""
+
+# 8. Summary
 info "Done. Installed:"
 echo "  git       $(git --version 2>/dev/null | cut -d' ' -f3)"
 echo "  make      $(make --version 2>/dev/null | head -1 | grep -oP '[\d.]+')"
@@ -148,10 +211,11 @@ echo "  stow      $(stow --version 2>/dev/null | grep -oP '[\d.]+')"
 echo "  zsh       $(zsh --version 2>/dev/null | cut -d' ' -f2)"
 echo "  tmux      $(tmux -V 2>/dev/null | cut -d' ' -f2)"
 echo "  oh-my-zsh $(test -d ~/.oh-my-zsh && echo 'installed' || echo 'missing')"
+echo "  tpm       $(test -d ~/.config/tmux/plugins/tpm && echo 'installed' || echo 'missing')"
 echo ""
 warn "Next steps:"
 echo "  - Fill in ~/.claude/projects/-root-dotfiles/CLAUDE.md with server context"
-echo "  - Create ~/.gitconfig.local with your name/email for this server"
 echo "  - Create ~/.zshrc.local for server-specific shell config"
-echo "  - Create ~/.tmux.conf.local for server-specific tmux config"
+echo "  - Run: bash scripts/harden.sh (Tailscale + security hardening)"
+echo "  - Run: bash scripts/verify.sh (check everything is working)"
 echo ""

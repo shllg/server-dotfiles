@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Show brief context when switching tmux sessions
+# Sets a session option read by status-right, auto-clears after 4s
+
+session="$1"
+dir="$2"
+
+# Clear any existing context
+tmux set -u -t "$session" @session-context 2>/dev/null
+
+# Only show context if directory is a git repo
+if git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  dirty=$(git -C "$dir" status --porcelain 2>/dev/null | wc -l)
+  last_commit=$(git -C "$dir" log --oneline -1 --format='%s' 2>/dev/null | cut -c 1-40)
+
+  if [ -n "$branch" ]; then
+    marker=""
+    [ "$dirty" -gt 0 ] && marker="*"
+    tmux set -t "$session" @session-context "$(printf " %s%s · %s" "$branch" "$marker" "$last_commit")"
+    tmux refresh-client -S
+    # Auto-clear after 4 seconds
+    (sleep 4 && tmux set -u -t "$session" @session-context 2>/dev/null && tmux refresh-client -S) &
+  fi
+fi

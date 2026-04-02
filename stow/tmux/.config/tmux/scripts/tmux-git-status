@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#
+# tmux-git-status — Lightweight git branch segment for tmux status-right
+#
+# Usage: tmux-git-status <pane-current-path>
+# Output: " branch*" (asterisk if dirty) or empty if not a git repo
+
+set -euo pipefail
+
+ROOT="${1:-$PWD}"
+[[ -z "$ROOT" || ! -d "$ROOT" ]] && exit 0
+
+BRANCH=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null) || exit 0
+[[ -z "$BRANCH" ]] && exit 0
+
+# Detect unstaged or staged changes (skips untracked files for performance)
+DIRTY=""
+{ git -C "$ROOT" diff --quiet --ignore-submodules HEAD && \
+  git -C "$ROOT" diff --cached --quiet --ignore-submodules HEAD; } 2>/dev/null || DIRTY="*"
+
+printf ' %s%s' "$BRANCH" "$DIRTY"
